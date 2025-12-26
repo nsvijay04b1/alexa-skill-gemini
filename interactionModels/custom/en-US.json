@@ -30,7 +30,9 @@
             "Gemini {query}",
             "Hey Gemini {query}",
             "Ask Gemini {query}",
-            "{query}"
+            "Gemini chat {query}",
+            "Open Gemini chat {query}",
+            "Open Gemini {query}"
           ]
         }
       ],
