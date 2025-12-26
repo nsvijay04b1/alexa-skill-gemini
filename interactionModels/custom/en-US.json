@@ -22,17 +22,20 @@
           "slots": [
             {
               "name": "query",
-              "type": "AMAZON.Person"
+              "type": "AMAZON.SearchQuery"
             }
           ],
           "name": "ChatIntent",
           "samples": [
+            "Gemini {query}",
+            "Hey Gemini {query}",
+            "Ask Gemini {query}",
             "{query}"
           ]
         }
       ],
       "types": [],
-      "invocationName": "chat with gemini"
+      "invocationName": "gemini chat"
     }
   }
 }
