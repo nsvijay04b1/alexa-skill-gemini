@@ -24,7 +24,9 @@ logger.setLevel(logging.INFO)
 
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 # API endpoint URL
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={}".format(GOOGLE_API_KEY)
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash-lite')
+# API endpoint URL
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}".format(GEMINI_MODEL, GOOGLE_API_KEY)
 
 
 def call_gemini_api(history):
@@ -32,7 +34,7 @@ def call_gemini_api(history):
     Calls the Gemini API with the provided chat history.
     
     :param history: List of dicts with role and parts.
-    :return: The text response from Gemini or None if error.
+    :return: Tuple (text_response, error_message).
     """
     headers = {
         'Content-Type': 'application/json',
@@ -50,13 +52,14 @@ def call_gemini_api(history):
             .get("content", {})
             .get("parts", [{}])[0]
             .get("text"))
-        return text
+        return text, None
     except requests.exceptions.RequestException as e:
         logger.error(f"API Request failed: {e}")
-        return None
+        error_msg = str(e).replace(GOOGLE_API_KEY, "API_KEY_HIDDEN")
+        return None, error_msg
     except (KeyError, IndexError) as e:
-         logger.error(f"Error parsing API response: {e}")
-         return None
+        logger.error(f"Error parsing API response: {e}")
+        return None, f"Parsing Error: {str(e)}"
 
 
 class LaunchRequestHandler(AbstractRequestHandler):
@@ -72,30 +75,17 @@ class LaunchRequestHandler(AbstractRequestHandler):
         # Initialize session history
         session_attr = handler_input.attributes_manager.session_attributes
         if "history" not in session_attr:
-             session_attr["history"] = []
+            session_attr["history"] = []
 
-        # Initial prompt to Gemini to set the tone (optional, but good for context)
-        # We won't send this to the user, just to prime the bot or we can just greet the user.
-        # existing code sent a prompt. Let's send a greeting query.
-        
+        # Silent System Prompt: Add to history but do not call API.
+        # This ensures the 300-word limit is respected in future turns without paying for a generation now.
         max_words = os.getenv('MAX_RESPONSE_WORDS', '300')
-        initial_prompt = f"Hello! Respond in English clearly and keep your response under {max_words} words. OK?"
-        user_turn = {"role": "user", "parts": [{"text": initial_prompt}]}
+        system_instruction = f"Hello! Respond in English clearly and keep your response under {max_words} words. OK?"
         
-        # We don't necessarily need to call the API on launch unless we want a dynamic greeting.
-        # The original code called it to get "Hello, I'm your Gemini Chat Bot...".
-        # Let's replicate that behavior safely.
+        session_attr["history"].append({"role": "user", "parts": [{"text": system_instruction}]})
+        session_attr["history"].append({"role": "model", "parts": [{"text": "Understood. I will keep responses concise."}]})
         
-        temp_history = [user_turn]
-        text = call_gemini_api(temp_history)
-        
-        if text:
-             # Store the interaction in history
-             session_attr["history"].append(user_turn)
-             session_attr["history"].append({"role": "model", "parts": [{"text": text}]})
-             speak_output = "Hello, I'm your Gemini Chat Bot. " + text + " How can I help you?"
-        else:
-             speak_output = "Hello, I'm your Gemini Chat Bot. I'm having trouble connecting right now, but how can I help you?"
+        speak_output = "I am google gemini, How can I help you?"
 
         return (
             handler_input.response_builder
@@ -127,7 +117,7 @@ class ChatIntentHandler(AbstractRequestHandler):
         session_attr["history"].append(user_turn)
         
         # Call API with full history
-        text = call_gemini_api(session_attr["history"])
+        text, error = call_gemini_api(session_attr["history"])
         
         if text:
             speak_output = text
@@ -138,7 +128,7 @@ class ChatIntentHandler(AbstractRequestHandler):
             }
             session_attr["history"].append(model_turn)
         else:
-            speak_output = "I did not receive a response from Gemini. Please try again."
+            speak_output = f"I did not receive a response. Debug Error: {error}"
             # Remove the last user turn since we failed to process it? 
             # Or keep it? Usually better to remove if we want to retry clean, 
             # but for simplicity let's leave it or remove it. Removing is safer to avoid confusion.
